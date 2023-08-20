@@ -88,7 +88,9 @@ class TrussEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         "render_fps": 50,
     }
 
-    def __init__(self, render_mode: Optional[str] = None):
+    def __init__(self, initialState, render_mode: Optional[str] = None):
+        self.initialState = initialState
+        
         self.gravity = 9.8
         self.masscart = 1.0
         self.masspole = 0.1
@@ -196,12 +198,17 @@ class TrussEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         options: Optional[dict] = None,
     ):
         super().reset(seed=seed)
-        # Note that if you use custom reset bounds, it may lead to out-of-bound
-        # state/observations.
-        low, high = utils.maybe_parse_reset_bounds(
-            options, -0.05, 0.05  # default low
-        )  # default high
-        self.state = self.np_random.uniform(low=low, high=high, size=(4,))
+        # # Note that if you use custom reset bounds, it may lead to out-of-bound
+        # # state/observations.
+        # low, high = utils.maybe_parse_reset_bounds(
+        #     options, -0.05, 0.05  # default low
+        # )  # default high
+        # self.state = self.np_random.uniform(low=low, high=high, size=(4,))
+        
+        
+        #INITIAL STATE ADDED TO THE RESET FUNCTION
+        self.state = self.initialState
+        
         self.steps_beyond_terminated = None
 
         if self.render_mode == "human":
