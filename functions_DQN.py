@@ -36,6 +36,8 @@ from tensorflow.keras.optimizers import RMSprop
 from collections import deque 
 from tensorflow import gather_nd
 from tensorflow.keras.losses import mean_squared_error 
+from Methods_RL import AllActionsList, ActiveNodes, ActionCheck, AllowableActionsList
+from Methods_RL import displacementAtNode, stiffnessMatrixAssemble, displacementSolve
 
 
 
@@ -188,8 +190,13 @@ class DeepQLearning:
                 # select an action on the basis of the current state, denoted by currentState
                 action = self.selectAction(currentState,indexEpisode)
                 
+                ###########################################################################
+                #   INSERT THE FEM CODE HERE
+                ###########################################################################                
+                
                 # here we step and return the state, reward, and boolean denoting if the state is a terminal state
-                (nextState, reward, terminalState,_,_) = self.env.step(action)          
+                (nextState, reward, terminalState,_,_) = self.env.step(action)        
+                
                 rewardsEpisode.append(reward)
          
                 # add current state, action, reward, next state, and terminal flag to the replay buffer
@@ -215,14 +222,27 @@ class DeepQLearning:
     # INPUTS: 
     # state - state for which to compute the action
     # index - index of the current episode
+    # OUTOUT:
+    # Index - index of the selected action
     def selectAction(self,state,index):
         import numpy as np
         
-        # first index episodes we select completely random actions to have enough exploration
-        # change this
-        if index<1:
-            return np.random.choice(self.actionDimension)   
-            
+        actionIndex = None
+        
+        Nodes = self.env.Nodes
+        grid = self.env.grid
+        material = self.env.material
+        spring = self.env.spring
+        
+        AllActions = AllActionsList(state, Nodes)
+        
+        springValues = spring["values"]
+        springCoeff = spring["coeff"]
+        Area = material["Area"]
+        Emod = material["E"]
+        density = material["Density"]
+        
+       
         # Returns a random real number in the half-open interval [0.0, 1.0)
         # this number is used for the epsilon greedy approach
         randomNumber=np.random.random()
@@ -231,11 +251,38 @@ class DeepQLearning:
         if index>200:
             self.epsilon=0.999*self.epsilon
         
+        # -------------------------------
+        # EXPLORATION ALWAYS FOR FIRST ACTION
         # if this condition is satisfied, we are exploring, that is, we select random actions
-        if randomNumber < self.epsilon:
-            # returns a random action selected from: 0,1,...,actionNumber-1
-            return np.random.choice(self.actionDimension)            
-        
+        if index<1 or randomNumber < self.epsilon:
+                      
+            while True:
+                AllowedActions, UnallowedActions = AllowableActionsList(AllActions)
+                
+                taken_action = random.choice(AllowedActions)
+                active_nodes, _ = ActiveNodes(state, Nodes)
+                
+                result, elements_new = ActionCheck(taken_action, state, grid, active_nodes, Nodes)
+                
+                if result:
+                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod, springCoeff, springValues, density)
+                    U = displacementSolve(K, F)
+                    
+                    if U is not False:
+                        actionIndex = taken_action.ID
+                        return actionIndex
+                        
+                        # for unallowedaction in UnallowedActions:
+                        #     Q[state_ID][unallowedaction.ID] = penalty
+                
+                    else:
+                        AllActions[taken_action.ID].allowed = False
+                else:
+                    AllActions[taken_action.ID].allowed = False
+            
+    
+        # -------------------------------
+        # EXPLOITATION
         # otherwise, we are selecting greedy actions
         else:
             # we return the index where Qvalues[state,:] has the max value
@@ -243,7 +290,26 @@ class DeepQLearning:
                        
             Qvalues=self.mainNetwork.predict(state.reshape(1,4))
           
-            return np.random.choice(np.where(Qvalues[0,:]==np.max(Qvalues[0,:]))[0])
+            # QvaluesSorted =  np.random.choice(np.where(Qvalues[0,:]==np.max(Qvalues[0,:]))[0])
+            
+            QvaluesSorted = np.argsort(Qvalues)[::-1]
+
+            
+            for actionIndex in QvaluesSorted:
+                takenAction = AllActions[actionIndex]
+                
+                
+                active_nodes, _ = ActiveNodes(state, Nodes)
+                result, elements_new = ActionCheck(takenAction, state, grid, active_nodes, Nodes)
+                
+                if result:
+                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod, springCoeff, springValues, density)
+                    U = displacementSolve(K, F)
+                    
+                    if U is not False:
+                        return actionIndex
+                        # displacement_current = displacementAtNode(U, 14, 0, dofs_remain)
+                        break
             # here we need to return the minimum index since it can happen
             # that there are several identical maximal entries, for example 
             # import numpy as np
@@ -252,6 +318,9 @@ class DeepQLearning:
             # this will return [1,2], but we only need a single index
             # that is why we need to have np.random.choice(np.where(a==np.max(a))[0])
             # note that zero has to be added here since np.where() returns a tuple
+            
+            
+        return actionIndex
     ###########################################################################
     #    END - function selecting an action: epsilon-greedy approach
     ###########################################################################

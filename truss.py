@@ -88,8 +88,14 @@ class TrussEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         "render_fps": 50,
     }
 
-    def __init__(self, initialState, render_mode: Optional[str] = None):
+    def __init__(self, initialState, Nodes, grid, material, spring, render_mode: Optional[str] = None):
         self.initialState = initialState
+        self.Nodes = Nodes
+        self.grid = grid
+        self.material = material
+        self.spring = spring
+        
+        
         
         self.gravity = 9.8
         self.masscart = 1.0
@@ -135,6 +141,9 @@ class TrussEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         err_msg = f"{action!r} ({type(action)}) invalid"
         assert self.action_space.contains(action), err_msg
         assert self.state is not None, "Call reset before using step method."
+        
+        
+        
         x, x_dot, theta, theta_dot = self.state
         force = self.force_mag if action == 1 else -self.force_mag
         costheta = math.cos(theta)
@@ -213,7 +222,7 @@ class TrussEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
 
         if self.render_mode == "human":
             self.render()
-        return np.array(self.state, dtype=np.float32), {}
+        return self.state, {}
 
     def render(self):
         if self.render_mode is None:
