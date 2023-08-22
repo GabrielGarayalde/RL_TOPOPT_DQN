@@ -62,9 +62,9 @@ class DeepQLearning:
         self.numberEpisodes=numberEpisodes
         
         # state dimension
-        self.stateDimension=4
+        self.stateDimension=self.env.maxElements*2 
         # action dimension
-        self.actionDimension=2
+        self.actionDimension=len(self.env.Nodes)*self.env.maxElements*2 
         # this is the maximum size of the replay buffer
         self.replayBufferSize=300
         # this is the size of the training batch that is randomly sampled from the replay buffer
@@ -202,7 +202,7 @@ class DeepQLearning:
                 # add current state, action, reward, next state, and terminal flag to the replay buffer
                 self.replayBuffer.append((currentState,action,reward,nextState,terminalState))
                 
-                # train network
+                # train network --> only occurs after replayBuffer is full
                 self.trainNetwork()
                 
                 # set the current state for the next step
@@ -232,12 +232,9 @@ class DeepQLearning:
         Nodes = self.env.Nodes
         grid = self.env.grid
         material = self.env.material
-        spring = self.env.spring
         
         AllActions = AllActionsList(state, Nodes)
         
-        springValues = spring["values"]
-        springCoeff = spring["coeff"]
         Area = material["Area"]
         Emod = material["E"]
         density = material["Density"]
@@ -255,6 +252,9 @@ class DeepQLearning:
         # EXPLORATION ALWAYS FOR FIRST ACTION
         # if this condition is satisfied, we are exploring, that is, we select random actions
         if index<1 or randomNumber < self.epsilon:
+            
+            return np.random.choice(self.actionDimension)   
+
                       
             while True:
                 AllowedActions, UnallowedActions = AllowableActionsList(AllActions)
@@ -265,7 +265,7 @@ class DeepQLearning:
                 result, elements_new = ActionCheck(taken_action, state, grid, active_nodes, Nodes)
                 
                 if result:
-                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod, springCoeff, springValues, density)
+                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod,  density)
                     U = displacementSolve(K, F)
                     
                     if U is not False:
@@ -289,35 +289,23 @@ class DeepQLearning:
             # that is, since the index denotes an action, we select greedy actions
                        
             Qvalues=self.mainNetwork.predict(state.reshape(1,4))
-          
-            # QvaluesSorted =  np.random.choice(np.where(Qvalues[0,:]==np.max(Qvalues[0,:]))[0])
-            
+                      
             QvaluesSorted = np.argsort(Qvalues)[::-1]
-
             
             for actionIndex in QvaluesSorted:
                 takenAction = AllActions[actionIndex]
-                
                 
                 active_nodes, _ = ActiveNodes(state, Nodes)
                 result, elements_new = ActionCheck(takenAction, state, grid, active_nodes, Nodes)
                 
                 if result:
-                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod, springCoeff, springValues, density)
+                    K, F, dofs_remain = stiffnessMatrixAssemble(elements_new, Nodes, grid, Area, Emod,  density)
                     U = displacementSolve(K, F)
                     
                     if U is not False:
                         return actionIndex
                         # displacement_current = displacementAtNode(U, 14, 0, dofs_remain)
                         break
-            # here we need to return the minimum index since it can happen
-            # that there are several identical maximal entries, for example 
-            # import numpy as np
-            # a=[0,1,1,0]
-            # np.where(a==np.max(a))
-            # this will return [1,2], but we only need a single index
-            # that is why we need to have np.random.choice(np.where(a==np.max(a))[0])
-            # note that zero has to be added here since np.where() returns a tuple
             
             
         return actionIndex
